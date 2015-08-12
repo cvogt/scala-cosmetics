@@ -106,30 +106,6 @@ object Main extends App{
 
   //process(input)
 
-  import scala.util.matching.Regex
-
-  case class MatchClean(pattern: String){
-    def unapplySeq(s: String) = {
-      val uncolored = ansi.strip(s)
-      val cleaned = uncolored.substring(uncolored.indexOf(" ")+1)
-      //println(cleaned)
-      val res = pattern.r.unapplySeq(cleaned)
-      //println(res)
-      res
-    }
-  }
-
-
-  lazy val fileAndLine = "(/.*):([0-8]*): "
-  lazy val NotEnoughArguments = MatchClean(fileAndLine + "not enough arguments for method ([^ ]*): (.*)\\..*")
-  lazy val TypeMismatch = MatchClean(fileAndLine ++ "type mismatch;.*")
-  lazy val CompileError = MatchClean(fileAndLine ++ "type mismatch;.*")
-  lazy val Found = MatchClean(" found   : (.*)")
-       //"    \(which expands to\)  (.*),"
-  lazy val Required = MatchClean(" required: (.*)")
-  lazy val Anything = MatchClean("(.*)")
-  lazy val Caret = MatchClean("(.*)\\^")
-
   def formatMsgAndLine(msg: String, file: String, lineNoStr: String) = {
     val path = file.split("/")
     
@@ -172,48 +148,7 @@ object Main extends App{
     )
   }
 
-  def formatMismatch(file: String, lineNoStr: String, found: String, required: String, code: String, caretPrefix: String) = {
-    val lineNo = lineNoStr.toInt
-
-    // FIXME: beginning of file
-    val source = scala.io.Source.fromFile(file).getLines.drop(lineNo-3).take(5).toVector
-
-    def log(s: String) = println(/*(" " * ansi.strip(`[error] `).size) ++ */s)
-    
-    val uncolored = ansi.strip(caretPrefix)
-    val cleaned = uncolored.substring(uncolored.indexOf(" ")+1)
-    val pos = cleaned.size
-    val errorCode = {
-      code.drop(pos).head.toString ++ code.drop(pos+1).takeWhile(c => c.isLetter || c.isDigit)
-    }
-    println("")
-
-    log( blue((lineNo-2).toString ++ ": ") ++ source(0) )
-    log( blue((lineNo-1).toString ++ ": ") ++ source(1) )
-
-    log(
-      blue(lineNoStr ++ ": ")
-      ++
-      code.take(pos)
-      ++
-      underline(red(errorCode))
-      ++
-      code.drop(pos + errorCode.size)
-    )
-
-    log( blue((lineNo+1).toString ++ ": ") ++ source(3) )
-    log( blue((lineNo+2).toString ++ ": ") ++ source(4) )
-
-    //log((" "*lineNo.size) ++ "  " ++ caretPrefix + bold(magenta("^")) )
-
-    /*
-      lazy val nonIdentChars = Seq(
-        '\u0020', '\u0009', '\u000D', '\u000A', '(', ')', '[', ']', '{', '}', '`', ''', '"', '.', ';', ','
-      ).map(_.toString).map(Regex.quote).mkString("|")
-    }
-
-    */
-
+  def formatFoundRequired(found: String, required: String) = {
     case class MyType(
       qualifiedName: List[String],
       children: Seq[MyType]
@@ -226,12 +161,12 @@ object Main extends App{
           name ++ "[ " ++ children.map(_.prettyPrint).mkString(", ") ++ " ]"
         }else name
       )
-      def imports: Seq[String] = {
+      def imports(color: String => String): Seq[String] = {
         (
           (
-            if(qualifiedName.size > 1) Seq(qualifiedName.dropRight(1).mkString(".") ++ "." ++ red(qualifiedName.last))
+            if(qualifiedName.size > 1) Seq(qualifiedName.dropRight(1).mkString(".") ++ "." ++ color(qualifiedName.last))
             else Seq()
-          ) ++ children.flatMap(_.imports)
+          ) ++ children.flatMap(_.imports(color))
         )
       }
     }
@@ -249,24 +184,89 @@ object Main extends App{
       case other => MyType("other: "+other.show[Structure]::Nil, Seq())
     }
 
-    log("")
+    println("")
     try{
       val ConstantTypeSuffix = "\\([0-9]+\\)".r
       val requiredParsed = parse( ConstantTypeSuffix.replaceAllIn(required,"") )
       val foundParsed = parse( ConstantTypeSuffix.replaceAllIn(found,"") )
-      log("required" ++ ": " ++ green(requiredParsed.prettyPrint) )
-      log("found" ++ "   : " ++ red(foundParsed.prettyPrint) )
-      val is = (requiredParsed.imports ++ foundParsed.imports).distinct.sorted.map("import " ++ _)
+      val is = (requiredParsed.imports(red) ++ foundParsed.imports(green)).distinct.sorted.map("import " ++ _)
       if(is.nonEmpty){
-        log("")
-        is.foreach(log)
+        is.foreach(println)
+        println("")
       }
+      println("required" ++ ": " ++ green(requiredParsed.prettyPrint) ++ ", found" ++ ": " ++ red(foundParsed.prettyPrint) )
     } catch {
       case e: scala.meta.ParseException =>
-        log("required" ++ ": " ++ green(required) )
-        log("found" ++ "   : " ++ red(found) )
+        println("required" ++ ": " ++ green(required) )
+        println("found" ++ "   : " ++ red(found) )
     }    
   }
+  def formatCode(file: String, lineNoStr: String, code: String, caretPrefix: String){
+    val lineNo = lineNoStr.toInt
+
+    // FIXME: beginning of file
+    val source = scala.io.Source.fromFile(file).getLines.drop(lineNo-3).take(5).toVector
+
+    println("")
+
+    println( blue((lineNo-2).toString ++ ": ") ++ source(0) )
+    println( blue((lineNo-1).toString ++ ": ") ++ source(1) )
+
+    val uncolored = ansi.strip(caretPrefix)
+    val cleaned = uncolored.substring(uncolored.indexOf(" ")+1)
+    val pos = cleaned.size
+    def identChar = (c: Char) => c.isLetter || c.isDigit// || (c == ".")
+    //val errorCodeBeforeCaret = code.take(pos).reverse.takeWhile(identChar).reverse
+    val errorCode = code.drop(pos).takeWhile(identChar)
+
+    println(
+      blue(lineNoStr ++ ": ")
+      ++
+      code.take(pos)// - errorCodeBeforeCaret.size)
+      /*++
+      underline(blue(errorCodeBeforeCaret))*/
+      ++
+      background.red(white(underline(errorCode)))
+      ++
+      code.drop(pos + errorCode.size)
+    )
+
+    println( blue((lineNo+1).toString ++ ": ") ++ source(3) )
+    println( blue((lineNo+2).toString ++ ": ") ++ source(4) )
+
+    //println((" "*lineNo.size) ++ "  " ++ caretPrefix + bold(magenta("^")) )
+
+    /*
+      lazy val nonIdentChars = Seq(
+        '\u0020', '\u0009', '\u000D', '\u000A', '(', ')', '[', ']', '{', '}', '`', ''', '"', '.', ';', ','
+      ).map(_.toString).map(Regex.quote).mkString("|")
+    }
+
+    */
+  }
+
+  import scala.util.matching.Regex
+
+  case class MatchClean(pattern: String){
+    def unapplySeq(s: String) = {
+      val uncolored = ansi.strip(s)
+      val cleaned = uncolored.substring(uncolored.indexOf(" ")+1)
+      //println(cleaned)
+      val res = pattern.r.unapplySeq(cleaned)
+      //println(res)
+      res
+    }
+  }
+
+
+  lazy val fileAndLine = "(/.*):([0-8]*): "
+  lazy val NotEnoughArguments = MatchClean(fileAndLine + "not enough arguments for method ([^ ]*): (.*)\\..*")
+  lazy val FileLineMsg = MatchClean(fileAndLine ++ "(.*)")
+  lazy val Found = MatchClean(" found   : (.*)")
+       //"    \(which expands to\)  (.*),"
+  lazy val Required = MatchClean(" required: (.*)")
+  lazy val Anything = MatchClean("(.*)")
+  lazy val Caret = MatchClean("(.*)\\^")
 
   def process(input: Stream[Char]): Stream[Char] = {
     //println("...")
@@ -279,9 +279,13 @@ object Main extends App{
       }
     }
     object TakeBeforeCaret{
-      def unapply(s: Stream[Char]) = Option{
-        val str = s.takeWhile(_ != '^').mkString
-        (str, s.drop(str.size))
+      def unapply(s: Stream[Char]) = {
+        val str = s.takeWhile(!Seq('^','\n').contains(_)).mkString
+        if(s.drop(str.size).headOption.forall(_ == '\n'))
+          None
+        else Option(
+          (str, s.drop(str.size))
+        )
       }
     }
     input match {
@@ -297,14 +301,14 @@ object Main extends App{
             tail
         }*/
       case TakeLine(
-        TypeMismatch(file, lineNoStr),
+        FileLineMsg(file, lineNoStr, msg),
         foo
       )
        =>
         //println("2")
         println(("_") * 80)
         println("")
-        println(formatMsgAndLine("type mismatch", file, lineNoStr))
+        println(formatMsgAndLine(msg, file, lineNoStr))
     //println(";;;")
     
         foo match {
@@ -339,8 +343,46 @@ object Main extends App{
             /*println((
               file, lineNoStr, found, required, code, caretPrefix
             ))*/
-            formatMismatch(
+            formatFoundRequired(
+              found, required
+            )
+            formatCode(
+              file, lineNoStr, code, caretPrefix
+            )
+            tail.drop(1)
+
+          case
+            TakeLine(
+              Anything(code),
+                  TakeBeforeCaret(
+                    caretPrefix,
+                    tail
+            ))
+            =>
+            /*println((
               file, lineNoStr, found, required, code, caretPrefix
+            ))*/
+            formatCode(
+              file, lineNoStr, code, caretPrefix
+            )
+            tail.drop(1)
+
+          case
+            TakeLine(
+              Anything(msg2),
+                TakeLine(
+                  Anything(code),
+                  TakeBeforeCaret(
+                    caretPrefix,
+                    tail
+            )))
+            =>
+            /*println((
+              file, lineNoStr, found, required, code, caretPrefix
+            ))*/
+            println(msg2)
+            formatCode(
+              file, lineNoStr, code, caretPrefix
             )
             tail.drop(1)
 
@@ -361,8 +403,11 @@ object Main extends App{
             /*println((
               file, lineNoStr, found, required, code, caretPrefix
             ))*/
-            formatMismatch(
-              file, lineNoStr, found, required, code, caretPrefix
+            formatFoundRequired(
+              found, required
+            )
+            formatCode(
+              file, lineNoStr, code, caretPrefix
             )
             tail.drop(1)
 
