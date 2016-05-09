@@ -48,7 +48,7 @@ object MyType{
     }
     else res
   }
-  private def parseName(t: scala.meta.Tree): MyType = {
+  def parseName(t: scala.meta.Tree): MyType = {
     t match {
       case Type.Name(name) => MyType(t, name :: Nil,Seq())
       case Term.Name(name) => MyType(t, name :: Nil,Seq())

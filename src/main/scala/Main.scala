@@ -1,6 +1,10 @@
 package org.cvogt.cosmetics
 import scala.annotation.tailrec
 import org.cvogt.ansi.{colors => ansi}
+import scala.meta
+import scala.meta.{Type => _,Term => _,Name => _,_}
+import scala.meta.internal.ast._, Term.{Name => TermName, Super}, Type.{Name => TypeName, _}, Name.{Anonymous, Indeterminate}
+import scala.meta.dialects.Scala211;
 
 object Main2 extends App{
   val msgs = Vector(
@@ -26,9 +30,32 @@ one error found""".trim
     println()
     println("-"*80)
   }
+
+  val zincOutput = s"""
+[info] Compiling 1 Scala source to /Users/chris/code/cbt-example/test/build/target/scala-2.11/classes...
+[info] Compile success at May 3, 2016 2:13:49 PM [0.312s]
+Compiling to /Users/chris/code/cbt-example/test/target/scala-2.11/classes
+[info] Compiling 1 Scala source to /Users/chris/code/cbt-example/test/target/scala-2.11/classes...
+[error] /Users/chris/code/cbt-example/test/Main.scala:1: not found: object ammonite
+[error] import ammonite.ops._
+[error]        ^
+[error] /Users/chris/code/cbt-example/test/Main.scala:4: not found: value Foo
+[error]     assert( Foo(1,"test").i == 1 )
+[error]             ^
+[error] /Users/chris/code/scalac-cosmetics/src/main/scala/parser.scala:22: type mismatch;
+[error]  found   : ((String, Int, Option[org.cvogt.cosmetics.Type], String, Either[String,org.cvogt.cosmetics.FoundRequired], (String, Int))) => org.cvogt.cosmetics.ErrorMessage
+[error]  required: ((String, Int, Option[Product with Serializable with org.cvogt.cosmetics.Type], Product with Serializable with scala.util.Either[String,org.cvogt.cosmetics.FoundRequired], (String, Int))) => ?
+[error]     (ErrorMessage.apply _).tupled
+[error]                            ^
+[error] two errors found
+[error] Compile failed at May 3, 2016 2:13:49 PM [0.323s]
+""".toStream
+  
+  println(
+    StreamingParser.scan(zincOutput)
+  )
 }
-/*
-object Main extends App{
+object StreamingParser{
   import java.io.{BufferedReader, InputStreamReader}
   val in = new BufferedReader(new InputStreamReader(System.in))
   import ansi._
@@ -42,6 +69,8 @@ object Main extends App{
 
   lazy val `[error] ` = "[0m[[31merror[0m] [0m"
   lazy val `[info] ` = "[0m[[0minfo[0m] [0m"
+
+
 
   val input =
     '\n' #::
@@ -112,7 +141,7 @@ object Main extends App{
           case c =>
             print(c)
             c match {
-              case c@'\n' if s.tail.startsWith(`[error] `) =>
+              case c@'\n' if s.tail.startsWith(`[error] `) || s.tail.startsWith("[error] ") =>
                 process(s.tail)
               case _ => s.tail
             }
@@ -120,7 +149,6 @@ object Main extends App{
       }
     }
   }
-  scan(input)
 
   //process(input)
 
@@ -138,15 +166,20 @@ object Main extends App{
       `[error] `
       ++
       */
-      underline(red(msg))
-      ++
-      " in "
-      ++
       projectPath.dropRight(1).mkString("/")
       ++
       "/"
       ++
       blue(projectPath.last)
+      ++
+      ":"
+      ++
+      lineNoStr
+      ++
+      ": "
+      ++
+      background.red(msg)
+      /*
       ++
       "/"
       ++
@@ -163,23 +196,12 @@ object Main extends App{
           fileInProject.last ++ ":" ++ lineNoStr
         )
       )
+      */
     )
   }
 
   def formatFoundRequired(found: String, required: String) = {
-    def parse(s: String) = parseName(s.parse[meta.Type])
-    def parseName(t: scala.meta.Tree): MyType = t match {
-      case Type.Name(name) => MyType(name :: Nil,Seq())
-      case Term.Name(name) => MyType(name :: Nil,Seq())
-      case Term.Select(prefix, Term.Name(name)) =>
-        val p = parseName(prefix)
-        p.copy(qualifiedName = p.qualifiedName :+ name)
-      case Type.Select(prefix, Type.Name(name)) =>
-        val p = parseName(prefix)
-        p.copy(qualifiedName = p.qualifiedName :+ name)
-      case Type.Apply(name, names) => parseName(name).copy(children=names.map(parseName))
-      case other => MyType("other: "+other.show[Structure]::Nil, Seq())
-    }
+    def parse(s: String) = MyType.parse(s)
 
     println("")
     try{
@@ -191,7 +213,13 @@ object Main extends App{
         is.foreach(println)
         println("")
       }
-      println("required" ++ ": " ++ green(requiredParsed.prettyPrint) ++ ", found" ++ ": " ++ red(foundParsed.prettyPrint) )
+      println(
+        "found   " ++ ": " ++ red(foundParsed.prettyPrint)
+        ++
+        "\n"
+        ++
+        "required" ++ ": " ++ green(requiredParsed.prettyPrint)
+      )
     } catch {
       case e: scala.meta.ParseException =>
         println("required" ++ ": " ++ green(required) )
@@ -199,15 +227,17 @@ object Main extends App{
     }    
   }
   def formatCode(file: String, lineNoStr: String, code: String, caretPrefix: String){
-    val lineNo = lineNoStr.toInt
+    val lineNo = lineNoStr.toInt - 1
 
     // FIXME: beginning of file
-    val source = scala.io.Source.fromFile(file).getLines.drop(lineNo-3).take(5).toVector
+    val source = scala.io.Source.fromFile(file).getLines.zipWithIndex.map(_.swap).toMap
 
     println("")
 
-    println( blue((lineNo-2).toString ++ ": ") ++ source(0) )
-    println( blue((lineNo-1).toString ++ ": ") ++ source(1) )
+    if(lineNo-2 >= 0)
+      println( blue((lineNo-2).toString ++ ": ") ++ source(lineNo - 2) )
+    if(lineNo-1 >= 0)
+      println( blue((lineNo-1).toString ++ ": ") ++ source(lineNo - 1) )
 
     val uncolored = ansi.strip(caretPrefix)
     val cleaned = uncolored.substring(uncolored.indexOf(" ")+1)
@@ -217,19 +247,21 @@ object Main extends App{
     val errorCode = code.drop(pos).takeWhile(identChar)
 
     println(
-      blue(lineNoStr ++ ": ")
+      blue(lineNo.toString ++ ": ")
       ++
       code.take(pos)// - errorCodeBeforeCaret.size)
       /*++
       underline(blue(errorCodeBeforeCaret))*/
       ++
-      background.red(white(underline(errorCode)))
+      background.red(errorCode)
       ++
       code.drop(pos + errorCode.size)
     )
 
-    println( blue((lineNo+1).toString ++ ": ") ++ source(3) )
-    println( blue((lineNo+2).toString ++ ": ") ++ source(4) )
+    if(lineNo+1 <= source.size)
+      println( blue((lineNo+1).toString ++ ": ") ++ source(lineNo+1) )
+    if(lineNo+2 <= source.size)
+      println( blue((lineNo+2).toString ++ ": ") ++ source(lineNo+2) )
 
     //println((" "*lineNo.size) ++ "  " ++ caretPrefix + bold(magenta("^")) )
 
@@ -285,6 +317,7 @@ object Main extends App{
         )
       }
     }
+
     input match {
       /*case NotEnoughArguments(_,_,_,_) =>
         //println("1")
@@ -414,4 +447,3 @@ object Main extends App{
     }
   }
 }
-*/
