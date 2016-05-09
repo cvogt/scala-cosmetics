@@ -2,10 +2,32 @@ package org.cvogt.cosmetics
 import scala.annotation.tailrec
 import org.cvogt.ansi.{colors => ansi}
 
-import scala.meta
-import scala.meta.{Type => _,Term => _,Name => _,_}
-import scala.meta.internal.ast._, Term.{Name => TermName, Super}, Type.{Name => TypeName, _}, Name.{Anonymous, Indeterminate}
-import scala.meta.dialects.Scala211; 
+object Main2 extends App{
+  val msgs = Vector(
+    """
+/Users/chris/code/scalac-cosmetics/src/main/scala/parser.scala:22: type mismatch;
+ found   : ((String, Int, Option[org.cvogt.cosmetics.Type], String, Either[String,org.cvogt.cosmetics.FoundRequired], (String, Int))) => org.cvogt.cosmetics.ErrorMessage
+ required: ((String, Int, Option[Product with Serializable with org.cvogt.cosmetics.Type], Product with Serializable with scala.util.Either[String,org.cvogt.cosmetics.FoundRequired], (String, Int))) => ?
+    (ErrorMessage.apply _).tupled
+                           ^
+one error found""".trim,
+    """
+/Users/chris/code/scalac-cosmetics/src/main/scala/Main.scala:11: type mismatch;
+ found   : String("df")
+ required: Int
+  val i: Int = "df"
+               ^
+one error found""".trim
+  ).map{ msg =>
+    println("-"*80)
+    println(msg)
+    println("-"*80)
+    ErrorMessageParser.compileErrorOrPassThrough.parse(msg)
+    println()
+    println("-"*80)
+  }
+}
+/*
 object Main extends App{
   import java.io.{BufferedReader, InputStreamReader}
   val in = new BufferedReader(new InputStreamReader(System.in))
@@ -392,4 +414,4 @@ object Main extends App{
     }
   }
 }
-
+*/
