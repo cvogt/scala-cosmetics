@@ -1,4 +1,4 @@
-package org.cvogt.cosmetics
+import org.cvogt.cosmetics._
 import scala.annotation.tailrec
 import org.cvogt.ansi.{colors => ansi}
 import scala.meta
@@ -6,7 +6,7 @@ import scala.meta.{Type => _,Term => _,Name => _,_}
 import scala.meta.internal.ast._, Term.{Name => TermName, Super}, Type.{Name => TypeName, _}, Name.{Anonymous, Indeterminate}
 import scala.meta.dialects.Scala211;
 
-object Main2 extends App{
+object Main extends App{
   val msgs = Vector(
     """
 /Users/chris/code/scalac-cosmetics/src/main/scala/parser.scala:22: type mismatch;
